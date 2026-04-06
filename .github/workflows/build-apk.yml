@@ -14,6 +14,9 @@ jobs:
   build:
     name: Build APK
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
 
     steps:
       - name: Checkout code
@@ -41,10 +44,37 @@ jobs:
           gradle-version: "8.7"
 
       - name: Create local.properties
-        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          echo "Created local.properties:"
+          cat local.properties
 
       - name: Build Debug APK
-        run: gradle :app:assembleDebug --stacktrace
+        id: build_debug
+        continue-on-error: true
+        run: gradle :app:assembleDebug --stacktrace 2>&1 | tee /tmp/build.log; echo "BUILD_EXIT=${PIPESTATUS[0]}" | tee -a /tmp/build.log
+
+      - name: Upload log to GitHub Issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "Run: ${{ github.run_number }} | Commit: ${{ github.sha }}"
+            echo ""
+            echo "=== LAST 300 LINES OF BUILD LOG ==="
+            echo ""
+            tail -300 /tmp/build.log 2>/dev/null || echo "(no log)"
+          } > /tmp/issue_body.txt
+          gh issue create \
+            --repo owjk123/xiaoshuo \
+            --title "CI Build Log #${{ github.run_number }}" \
+            --body-file /tmp/issue_body.txt \
+            && echo "Issue created" || echo "Issue creation failed"
+
+      - name: Fail if build failed
+        run: |
+          grep -q "BUILD_EXIT=0" /tmp/build.log && echo "Build succeeded" || { echo "Build failed"; exit 1; }
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -52,7 +82,6 @@ jobs:
           name: xiaoshuo-debug-${{ github.run_number }}
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
-          if-no-files-found: error
 
       - name: Build Release APK (unsigned)
         run: gradle :app:assembleRelease --stacktrace
@@ -63,12 +92,3 @@ jobs:
           name: xiaoshuo-release-unsigned-${{ github.run_number }}
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 7
-          if-no-files-found: error
-
-      - name: Show build outputs
-        if: always()
-        run: |
-          echo "=== Debug APK ==="
-          ls -lh app/build/outputs/apk/debug/ 2>/dev/null || echo "not found"
-          echo "=== Release APK ==="
-          ls -lh app/build/outputs/apk/release/ 2>/dev/null || echo "not found"
