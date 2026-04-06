@@ -28,8 +28,12 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Accept Android SDK licenses
-        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - name: Install Android platform and build-tools
+        run: |
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            --channel=0 || true
 
       - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
@@ -39,11 +43,37 @@ jobs:
       - name: Create local.properties
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
-      - name: Generate Gradle Wrapper
-        run: gradle wrapper --gradle-version 8.7 --distribution-type bin
-
       - name: Build Debug APK
-        run: chmod +x gradlew && ./gradlew assembleDebug --stacktrace
+        id: build_debug
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          gradle assembleDebug --stacktrace 2>&1 | tee /tmp/build-debug.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+      - name: Print build log (last 200 lines)
+        if: always()
+        run: |
+          if [ -f /tmp/build-debug.log ]; then
+            echo "=== ERROR LINES ==="
+            grep -iE "error:|exception:|: error|FAILED" /tmp/build-debug.log | head -50 || echo "(none)"
+            echo "=== LAST 200 LINES ==="
+            tail -200 /tmp/build-debug.log
+          else
+            echo "No build log found"
+          fi
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log-${{ github.run_number }}
+          path: /tmp/build-debug.log
+          retention-days: 3
+
+      - name: Fail if build failed
+        if: steps.build_debug.outputs.exit_code != '0'
+        run: exit 1
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -53,7 +83,7 @@ jobs:
           retention-days: 7
 
       - name: Build Release APK (unsigned)
-        run: ./gradlew assembleRelease --stacktrace
+        run: gradle assembleRelease --stacktrace
 
       - name: Upload Release APK (unsigned)
         uses: actions/upload-artifact@v4
