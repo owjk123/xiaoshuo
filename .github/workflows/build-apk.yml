@@ -43,36 +43,38 @@ jobs:
       - name: Create local.properties
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
-      - name: Build Debug APK
-        id: build_debug
+      - name: Build Debug + Release APK
+        id: build
         continue-on-error: true
         run: |
-          set -o pipefail
-          gradle assembleDebug --stacktrace 2>&1 | tee /tmp/build-debug.log
-          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+          gradle :app:assembleDebug :app:assembleRelease --stacktrace --info 2>&1 | tee /tmp/build.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          echo "exit_code=$BUILD_EXIT" >> $GITHUB_OUTPUT
+          exit $BUILD_EXIT
 
-      - name: Print build log (last 200 lines)
+      - name: Upload build log as Gist
         if: always()
         run: |
-          if [ -f /tmp/build-debug.log ]; then
-            echo "=== ERROR LINES ==="
-            grep -iE "error:|exception:|: error|FAILED" /tmp/build-debug.log | head -50 || echo "(none)"
-            echo "=== LAST 200 LINES ==="
-            tail -200 /tmp/build-debug.log
-          else
-            echo "No build log found"
-          fi
+          LOG=$(tail -400 /tmp/build.log 2>/dev/null | head -c 55000 | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
+          RESPONSE=$(curl -s -X POST https://api.github.com/gists \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"description\":\"CI Build Log Run ${{ github.run_number }}\",\"public\":false,\"files\":{\"build.log\":{\"content\":$LOG}}}")
+          echo "Gist URL: $(echo $RESPONSE | python3 -c 'import sys,json; r=json.load(sys.stdin); print(r.get(\"html_url\",\"error\"))')"
+          echo "Gist ID: $(echo $RESPONSE | python3 -c 'import sys,json; r=json.load(sys.stdin); print(r.get(\"id\",\"error\"))')"
 
-      - name: Upload build log
-        uses: actions/upload-artifact@v4
+      - name: Show APK check
         if: always()
-        with:
-          name: build-log-${{ github.run_number }}
-          path: /tmp/build-debug.log
-          retention-days: 3
+        run: |
+          echo "=== APK files ==="
+          find . -name "*.apk" 2>/dev/null | head -20 || echo "None"
+          echo "=== Debug ==="
+          ls -lh app/build/outputs/apk/debug/ 2>/dev/null || echo "not found"
+          echo "=== Release ==="
+          ls -lh app/build/outputs/apk/release/ 2>/dev/null || echo "not found"
 
       - name: Fail if build failed
-        if: steps.build_debug.outputs.exit_code != '0'
+        if: steps.build.outputs.exit_code != '0'
         run: exit 1
 
       - name: Upload Debug APK
@@ -82,20 +84,9 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
 
-      - name: Build Release APK (unsigned)
-        run: gradle assembleRelease --stacktrace
-
       - name: Upload Release APK (unsigned)
         uses: actions/upload-artifact@v4
         with:
           name: xiaoshuo-release-unsigned-${{ github.run_number }}
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 7
-
-      - name: Show build outputs
-        if: always()
-        run: |
-          echo "=== Debug APK ==="
-          ls -lh app/build/outputs/apk/debug/ 2>/dev/null || echo "not found"
-          echo "=== Release APK ==="
-          ls -lh app/build/outputs/apk/release/ 2>/dev/null || echo "not found"
