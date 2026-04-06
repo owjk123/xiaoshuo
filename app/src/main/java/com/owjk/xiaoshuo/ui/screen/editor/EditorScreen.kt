@@ -184,6 +184,7 @@ private fun StreamOutputView(text: String, modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChapterListItem(chapter: ChapterEntity, isSelected: Boolean, onClick: () -> Unit) {
     ListItem(

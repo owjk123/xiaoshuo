@@ -12,7 +12,7 @@ on:
 
 jobs:
   build:
-    name: Build Debug APK
+    name: Build APK
     runs-on: ubuntu-latest
 
     steps:
@@ -24,34 +24,17 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Download gradle-wrapper.jar
-        run: |
-          mkdir -p gradle/wrapper
-          curl -L -o gradle/wrapper/gradle-wrapper.jar \
-            "https://github.com/gradle/gradle/raw/v8.7.0/gradle/wrapper/gradle-wrapper.jar"
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+          gradle-version: "8.7"
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
-        env:
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: gradle assembleDebug --stacktrace
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -61,7 +44,7 @@ jobs:
           retention-days: 7
 
       - name: Build Release APK (unsigned)
-        run: ./gradlew assembleRelease --stacktrace
+        run: gradle assembleRelease --stacktrace
 
       - name: Upload Release APK (unsigned)
         uses: actions/upload-artifact@v4
@@ -70,9 +53,10 @@ jobs:
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 7
 
-      - name: Show APK info
+      - name: Show build outputs
+        if: always()
         run: |
           echo "=== Debug APK ==="
-          ls -lh app/build/outputs/apk/debug/ || true
+          ls -lh app/build/outputs/apk/debug/ 2>/dev/null || echo "not found"
           echo "=== Release APK ==="
-          ls -lh app/build/outputs/apk/release/ || true
+          ls -lh app/build/outputs/apk/release/ 2>/dev/null || echo "not found"

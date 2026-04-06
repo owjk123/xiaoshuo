@@ -2,6 +2,7 @@ package com.owjk.xiaoshuo.ui.screen.home
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -136,6 +137,7 @@ private fun BookCard(book: BookEntity, onClick: () -> Unit, onDelete: () -> Unit
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun CreateBookDialog(onDismiss: () -> Unit, onCreate: (String, String, String) -> Unit) {
     var title by remember { mutableStateOf("") }
